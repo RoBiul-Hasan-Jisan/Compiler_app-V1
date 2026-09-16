@@ -1,0 +1,33 @@
+name: cpp_ide
+description: A professional C++ coding IDE for mobile, built with Flutter.
+publish_to: "none"
+version: 0.1.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # State management - lightweight, no code generation needed.
+  provider: ^6.1.2
+
+  # Local persistence for files, recent files, and settings.
+  shared_preferences: ^2.2.3
+
+  # HTTP client for the real compiler backend (ApiCompilerService).
+  http: ^1.2.1
+
+  # Unique ids for files.
+  uuid: ^4.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
