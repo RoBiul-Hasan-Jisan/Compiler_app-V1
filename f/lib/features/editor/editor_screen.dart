@@ -37,7 +37,7 @@ class EditorScreen extends StatefulWidget {
   State<EditorScreen> createState() => _EditorScreenState();
 }
 
-class _EditorScreenState extends State<EditorScreen> {
+class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver {
   late final CppEditorController _codeController;
   final TextEditingController _stdinController = TextEditingController();
   final FocusNode _editorFocusNode = FocusNode();
@@ -61,7 +61,16 @@ class _EditorScreenState extends State<EditorScreen> {
     super.initState();
     _codeController = CppEditorController();
     _editorFocusNode.addListener(_onEditorFocusChanged);
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _initializeFile());
+  }
+
+  /// Called when the keyboard opens/closes. MediaQuery can't be used for
+  /// this: the enclosing Scaffold consumes the keyboard inset and reports 0
+  /// to its children, so we listen to the window metrics directly.
+  @override
+  void didChangeMetrics() {
+    if (mounted) setState(() {});
   }
 
   void _onEditorFocusChanged() {
@@ -262,6 +271,7 @@ class _EditorScreenState extends State<EditorScreen> {
     _autosaveDebounce?.cancel();
     _codeController.dispose();
     _stdinController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     _editorFocusNode.removeListener(_onEditorFocusChanged);
     _editorFocusNode.dispose();
     if (_fullscreen) {
@@ -283,7 +293,8 @@ class _EditorScreenState extends State<EditorScreen> {
     // With the soft keyboard open there is very little vertical room left,
     // so drop the panels that aren't needed while typing. Otherwise the code
     // editor is squeezed to almost nothing on phones.
-    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final view = View.of(context);
+    final keyboardOpen = view.viewInsets.bottom / view.devicePixelRatio > 0;
     final editorTyping = keyboardOpen && _editorFocusNode.hasFocus;
     final showInputPanel = !_fullscreen && !editorTyping;
     final showOutputPanel = !_fullscreen && !keyboardOpen;
