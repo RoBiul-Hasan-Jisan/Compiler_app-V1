@@ -8,6 +8,7 @@ import '../../data/repositories/file_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../widgets/common/empty_state.dart';
 import '../../widgets/file_card/file_card.dart';
+import '../examples/examples_screen.dart';
 import '../files/new_file_dialog.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -58,6 +59,12 @@ class HomeScreen extends StatelessWidget {
                   Text('${_greeting()} 👋', style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: 4),
                   _CompilerStatusBadge(endpoint: settings.compilerApiUrl),
+                  const SizedBox(height: 16),
+                  _ExamplesCard(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => ExamplesScreen(onOpenFile: onOpenFile)),
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   Text('Recent Files', style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
@@ -83,6 +90,49 @@ class HomeScreen extends StatelessWidget {
                 ],
               ),
             ),
+    );
+  }
+}
+
+/// Entry point to the demo programs, placed high on Home so new users
+/// find it straight away.
+class _ExamplesCard extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ExamplesCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(IdeMetrics.radiusSm),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: IdeColors.darkSurfaceAlt,
+          borderRadius: BorderRadius.circular(IdeMetrics.radiusSm),
+          border: Border.all(color: IdeColors.accent.withOpacity(0.5)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.school_outlined, color: IdeColors.accent, size: 26),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Learn by examples', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  SizedBox(height: 2),
+                  Text(
+                    '12 ready-to-run programs: loops, functions, arrays and more',
+                    style: TextStyle(fontSize: 12, color: IdeColors.darkTextSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: IdeColors.darkTextSecondary),
+          ],
+        ),
+      ),
     );
   }
 }

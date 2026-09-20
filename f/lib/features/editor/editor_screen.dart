@@ -65,6 +65,26 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     WidgetsBinding.instance.addPostFrameCallback((_) => _initializeFile());
   }
 
+  /// The shell passes a new [EditorScreen.initialFileId] when a file is
+  /// opened from Home / Files / Examples. The State is kept alive, so
+  /// without this the editor would keep showing the previous file.
+  @override
+  void didUpdateWidget(covariant EditorScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final id = widget.initialFileId;
+    if (id == null || id == _openFileId) return;
+
+    // Flush an unsaved edit of the file we are leaving.
+    final leavingId = _openFileId;
+    if (leavingId != null && (_autosaveDebounce?.isActive ?? false)) {
+      _autosaveDebounce!.cancel();
+      context.read<FileRepository>().updateContent(leavingId, _codeController.text);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openFileFromRepo(id);
+    });
+  }
+
   /// Called when the keyboard opens/closes. MediaQuery can't be used for
   /// this: the enclosing Scaffold consumes the keyboard inset and reports 0
   /// to its children, so we listen to the window metrics directly.
