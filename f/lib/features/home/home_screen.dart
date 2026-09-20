@@ -118,7 +118,7 @@ class _CompilerStatusBadgeState extends State<_CompilerStatusBadge> {
   Future<void> _check() async {
     try {
       final uri = Uri.parse('${widget.endpoint}/health');
-      final response = await http.get(uri).timeout(const Duration(seconds: 4));
+      final response = await http.get(uri).timeout(const Duration(seconds: 45));
       if (!mounted) return;
       setState(() => _status = response.statusCode == 200 ? _CompilerStatus.online : _CompilerStatus.offline);
     } catch (_) {

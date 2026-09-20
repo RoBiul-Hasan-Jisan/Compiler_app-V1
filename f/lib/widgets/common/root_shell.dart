@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/utils/ui_state.dart';
 import '../../features/editor/editor_screen.dart';
 import '../../features/files/files_screen.dart';
 import '../../features/home/home_screen.dart';
@@ -38,18 +39,25 @@ class _RootShellState extends State<RootShell> {
 
     return Scaffold(
       body: IndexedStack(index: _index, children: screens),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: (i) => setState(() {
-          _index = i;
-          if (i != 1) _pendingFileId = null;
-        }),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.code), label: 'Editor'),
-          BottomNavigationBarItem(icon: Icon(Icons.folder_outlined), activeIcon: Icon(Icons.folder), label: 'Files'),
-          BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Settings'),
-        ],
+      bottomNavigationBar: ValueListenableBuilder<bool>(
+        valueListenable: UiState.editorFullscreen,
+        builder: (context, fullscreen, child) {
+          if (fullscreen && _index == 1) return const SizedBox.shrink();
+          return child!;
+        },
+        child: BottomNavigationBar(
+          currentIndex: _index,
+          onTap: (i) => setState(() {
+            _index = i;
+            if (i != 1) _pendingFileId = null;
+          }),
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
+            BottomNavigationBarItem(icon: Icon(Icons.code), label: 'Editor'),
+            BottomNavigationBarItem(icon: Icon(Icons.folder_outlined), activeIcon: Icon(Icons.folder), label: 'Files'),
+            BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Settings'),
+          ],
+        ),
       ),
     );
   }

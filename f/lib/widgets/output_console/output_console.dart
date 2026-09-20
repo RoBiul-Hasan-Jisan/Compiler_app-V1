@@ -57,9 +57,14 @@ class _OutputConsoleState extends State<OutputConsole> {
 
   @override
   Widget build(BuildContext context) {
+    // Scale with the screen so the console never swallows a small phone.
+    final screenH = MediaQuery.of(context).size.height;
+    final collapsedH = (screenH * 0.26).clamp(150.0, 220.0).toDouble();
+    final expandedH = (screenH * 0.55).clamp(300.0, 480.0).toDouble();
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
-      height: _expanded ? 420 : 220,
+      height: _expanded ? expandedH : collapsedH,
       decoration: const BoxDecoration(
         color: IdeColors.darkSurface,
         border: Border(top: BorderSide(color: IdeColors.darkBorder)),

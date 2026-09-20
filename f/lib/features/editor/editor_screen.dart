@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/ui_state.dart';
 import '../../data/models/cpp_file.dart';
 import '../../data/repositories/file_repository.dart';
 import '../../data/repositories/settings_repository.dart';
@@ -46,6 +47,10 @@ class _EditorScreenState extends State<EditorScreen> {
   CppFile? _openFile;
   Timer? _autosaveDebounce;
 
+  /// Full-screen mode: hides the app bar, bottom navigation, input and
+  /// output panels so the code editor gets the whole screen.
+  bool _fullscreen = false;
+
   // Kept as an instance so ApiCompilerService's http.Client can be reused
   // and disposed correctly across rebuilds.
   CompilerService? _compilerService;
@@ -55,7 +60,26 @@ class _EditorScreenState extends State<EditorScreen> {
   void initState() {
     super.initState();
     _codeController = CppEditorController();
+    _editorFocusNode.addListener(_onEditorFocusChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _initializeFile());
+  }
+
+  void _onEditorFocusChanged() {
+    if (mounted) setState(() {}); // Re-evaluate which panels fit on screen.
+  }
+
+  void _setFullscreen(bool value) {
+    if (_fullscreen == value) return;
+    setState(() => _fullscreen = value);
+    UiState.editorFullscreen.value = value;
+    if (value) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: SystemUiOverlay.values,
+      );
+    }
   }
 
   Future<void> _initializeFile() async {
@@ -164,6 +188,53 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _run() async {
     final settings = context.read<SettingsRepository>().settings;
     await _runController!.compileAndRun(_codeController.text, _stdinController.text, standard: settings.cppStandard);
+    // In full-screen mode there is no output panel, so show it as a sheet.
+    if (_fullscreen && mounted) _showOutputSheet();
+  }
+
+  void _showOutputSheet() {
+    FocusScope.of(context).unfocus();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: IdeColors.darkSurface,
+      builder: (sheetContext) {
+        return ChangeNotifierProvider<EditorRunController>.value(
+          value: _runController!,
+          child: Consumer<EditorRunController>(
+            builder: (context, run, _) => OutputConsole(
+              status: run.status,
+              compileResult: run.lastCompileResult,
+              runResult: run.lastRunResult,
+              onClear: run.clear,
+              onErrorTap: (line) {
+                Navigator.of(sheetContext).pop();
+                _jumpToErrorLine(line);
+              },
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showInputSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: IdeColors.darkSurface,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(sheetContext).viewInsets.bottom),
+          child: InputPanel(
+            controller: _stdinController,
+            onRunWithInput: () {
+              Navigator.of(sheetContext).pop();
+              _run();
+            },
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _goToLine() async {
@@ -191,7 +262,14 @@ class _EditorScreenState extends State<EditorScreen> {
     _autosaveDebounce?.cancel();
     _codeController.dispose();
     _stdinController.dispose();
+    _editorFocusNode.removeListener(_onEditorFocusChanged);
     _editorFocusNode.dispose();
+    if (_fullscreen) {
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: SystemUiOverlay.values,
+      );
+    }
     if (_compilerService is ApiCompilerService) {
       (_compilerService as ApiCompilerService).dispose();
     }
@@ -201,6 +279,14 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsRepository>().settings;
+
+    // With the soft keyboard open there is very little vertical room left,
+    // so drop the panels that aren't needed while typing. Otherwise the code
+    // editor is squeezed to almost nothing on phones.
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final editorTyping = keyboardOpen && _editorFocusNode.hasFocus;
+    final showInputPanel = !_fullscreen && !editorTyping;
+    final showOutputPanel = !_fullscreen && !keyboardOpen;
 
     if (_openFile == null) {
       return Scaffold(
@@ -217,10 +303,22 @@ class _EditorScreenState extends State<EditorScreen> {
       value: _runController!,
       child: Consumer<EditorRunController>(
         builder: (context, run, _) {
-          return Scaffold(
-            appBar: AppBar(
+          return PopScope(
+            canPop: !_fullscreen,
+            onPopInvokedWithResult: (didPop, result) {
+              if (!didPop) _setFullscreen(false);
+            },
+            child: Scaffold(
+            appBar: _fullscreen
+                ? null
+                : AppBar(
               title: Text(_openFile!.name, style: const TextStyle(fontFamily: AppTheme.editorFontFamily)),
               actions: [
+                IconButton(
+                  icon: const Icon(Icons.fullscreen),
+                  tooltip: 'Full screen editor',
+                  onPressed: () => _setFullscreen(true),
+                ),
                 IconButton(icon: const Icon(Icons.save_outlined), tooltip: 'Save', onPressed: _saveNow),
                 PopupMenuButton<String>(
                   onSelected: (value) {
@@ -243,16 +341,19 @@ class _EditorScreenState extends State<EditorScreen> {
             body: SafeArea(
               child: Column(
                 children: [
-                  EditorToolbar(
-                    onUndo: () {}, // TextField's built-in undo covers most cases on-device.
-                    onRedo: () {},
-                    onSearch: () => showSearchReplaceSheet(context, _codeController),
-                    onGoToLine: _goToLine,
-                    onFormat: _format,
-                    onSettings: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  if (_fullscreen)
+                    _buildFullscreenBar(run)
+                  else
+                    EditorToolbar(
+                      onUndo: () {}, // TextField's built-in undo covers most cases on-device.
+                      onRedo: () {},
+                      onSearch: () => showSearchReplaceSheet(context, _codeController),
+                      onGoToLine: _goToLine,
+                      onFormat: _format,
+                      onSettings: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      ),
                     ),
-                  ),
                   Expanded(
                     child: CppCodeEditor(
                       key: _editorKey,
@@ -263,21 +364,82 @@ class _EditorScreenState extends State<EditorScreen> {
                       onChanged: _onSourceChanged,
                     ),
                   ),
-                  EditorAccessoryBar(controller: _codeController, focusNode: _editorFocusNode),
-                  InputPanel(controller: _stdinController, onRunWithInput: _run),
-                  OutputConsole(
-                    status: run.status,
-                    compileResult: run.lastCompileResult,
-                    runResult: run.lastRunResult,
-                    onClear: run.clear,
-                    onErrorTap: _jumpToErrorLine,
-                  ),
-                  _buildActionBar(run),
+                  if (!_fullscreen || keyboardOpen)
+                    EditorAccessoryBar(controller: _codeController, focusNode: _editorFocusNode),
+                  if (showInputPanel) InputPanel(controller: _stdinController, onRunWithInput: _run),
+                  if (showOutputPanel)
+                    OutputConsole(
+                      status: run.status,
+                      compileResult: run.lastCompileResult,
+                      runResult: run.lastRunResult,
+                      onClear: run.clear,
+                      onErrorTap: _jumpToErrorLine,
+                    ),
+                  if (!_fullscreen) _buildActionBar(run),
                 ],
               ),
             ),
+            ),
           );
         },
+      ),
+    );
+  }
+
+  /// Slim top strip shown instead of the app bar + toolbar in full-screen
+  /// mode: exit, file name, search, program input and Run.
+  Widget _buildFullscreenBar(EditorRunController run) {
+    return Container(
+      height: 44,
+      color: IdeColors.darkSurface,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.fullscreen_exit, size: 22, color: IdeColors.darkTextPrimary),
+            tooltip: 'Exit full screen',
+            onPressed: () => _setFullscreen(false),
+          ),
+          Expanded(
+            child: Text(
+              _openFile!.name,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: AppTheme.editorFontFamily,
+                fontSize: 13,
+                color: IdeColors.darkTextPrimary,
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.search, size: 20, color: IdeColors.darkTextPrimary),
+            tooltip: 'Search / Replace',
+            onPressed: () => showSearchReplaceSheet(context, _codeController),
+          ),
+          IconButton(
+            icon: const Icon(Icons.input, size: 20, color: IdeColors.darkTextPrimary),
+            tooltip: 'Program input',
+            onPressed: _showInputSheet,
+          ),
+          if (run.isBusy)
+            const SizedBox(
+              width: 48,
+              height: 48,
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: IdeColors.accent),
+                ),
+              ),
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.play_arrow, size: 26, color: IdeColors.success),
+              tooltip: 'Run',
+              onPressed: _run,
+            ),
+        ],
       ),
     );
   }
